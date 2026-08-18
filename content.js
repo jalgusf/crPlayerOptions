@@ -68,6 +68,37 @@
     el.textContent = label;
   }
 
+  // Crunchyroll ships some option items (e.g. the speed buttons) already in the
+  // DOM but disabled, which is why the browser swallows clicks on our clones.
+  // Force the clone (and its descendants) back to a clickable state.
+  function enableClone(el) {
+    for (const node of [el, ...el.querySelectorAll('*')]) {
+      node.removeAttribute('disabled');
+      if ('disabled' in node) node.disabled = false;
+      node.removeAttribute('aria-disabled');
+      if (node.classList)
+        for (const cls of [...node.classList])
+          if (/disabled/i.test(cls)) node.classList.remove(cls);
+      node.style.pointerEvents = 'auto';
+      node.style.cursor = 'pointer';
+      node.style.opacity = '';
+    }
+  }
+
+  // Fire `handler` on click AND pointerup, so a native capture-phase handler
+  // that swallows the click can't stop us. Guard against double-firing.
+  function onActivate(el, handler) {
+    let busy = false;
+    const wrapped = (e) => {
+      if (busy) return;
+      busy = true;
+      setTimeout(() => (busy = false), 0);
+      handler(e);
+    };
+    el.addEventListener('click', wrapped, true);
+    el.addEventListener('pointerup', wrapped, true);
+  }
+
   // Group option items by their parent container, keeping only items whose
   // text passes `classify`. Returns the parent group with the most matches.
   function bestGroup(classify) {
@@ -142,17 +173,14 @@
       const item = template.cloneNode(true);
       item.setAttribute(FLAG, `speed-${speed}`);
       item.removeAttribute('id');
+      enableClone(item);
       setLabel(item, `${speed}x`);
       if (item.hasAttribute('aria-checked'))
         item.setAttribute('aria-checked', 'false');
-      item.addEventListener(
-        'click',
-        () => {
-          applyRate(speed);
-          markSelected(group, item);
-        },
-        true
-      );
+      onActivate(item, () => {
+        applyRate(speed);
+        markSelected(group, item);
+      });
       group.parent.appendChild(item);
     }
 
@@ -188,17 +216,14 @@
     const item = template.cloneNode(true);
     item.setAttribute(FLAG, 'subs-none');
     item.removeAttribute('id');
+    enableClone(item);
     setLabel(item, 'None');
     if (item.hasAttribute('aria-checked'))
       item.setAttribute('aria-checked', 'false');
-    item.addEventListener(
-      'click',
-      () => {
-        setSubtitlesOff(true);
-        markSelected(group, item);
-      },
-      true
-    );
+    onActivate(item, () => {
+      setSubtitlesOff(true);
+      markSelected(group, item);
+    });
 
     // Picking any real language turns subtitles back on.
     for (const { node } of group.items) {
