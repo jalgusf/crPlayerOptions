@@ -34,26 +34,8 @@
 
   // --- State --------------------------------------------------------------
   let desiredRate = null; // last speed the user picked via our options
-
-  // --- Styles for hiding subtitles when "None" is chosen ------------------
-  const SUBS_OFF_CLASS = 'crpo-subs-off';
-  function injectStyle() {
-    if (document.getElementById('crpo-style')) return;
-    const style = document.createElement('style');
-    style.id = 'crpo-style';
-    style.textContent = `
-      html.${SUBS_OFF_CLASS} canvas.libassjs-canvas,
-      html.${SUBS_OFF_CLASS} .libassjs-canvas-parent,
-      html.${SUBS_OFF_CLASS} .vjs-text-track-display,
-      html.${SUBS_OFF_CLASS} [class*="subtitleContainer"],
-      html.${SUBS_OFF_CLASS} [class*="subtitle-container"],
-      html.${SUBS_OFF_CLASS} [class*="SubtitleRenderer"] {
-        display: none !important;
-        visibility: hidden !important;
-      }
-    `;
-    (document.head || document.documentElement).appendChild(style);
-  }
+  let subsOff = false; // whether "None" subtitles is active
+  const hiddenNodes = new Map(); // node -> previous inline display value
 
   // --- Helpers ------------------------------------------------------------
   function getVideo() {
@@ -151,13 +133,47 @@
     );
   }
 
-  function markSelected(group, chosen) {
-    for (const { node } of group.items) {
-      if (node.hasAttribute('aria-checked'))
-        node.setAttribute('aria-checked', node === chosen ? 'true' : 'false');
+  // Move the player's "selected" indicator onto `chosen`. The marker can be an
+  // aria attribute, a CSS class present on only the selected item, or a child
+  // element (a checkmark icon). We detect whichever it is and relocate it.
+  function syncSelection(parent, classify, chosen) {
+    const items = Array.from(parent.querySelectorAll(ITEM_SEL)).filter(
+      (n) => n.hasAttribute(FLAG) || classify(textOf(n)) !== null
+    );
+    if (!items.includes(chosen)) items.push(chosen);
+
+    // 1) aria-checked
+    for (const el of items)
+      if (el.hasAttribute('aria-checked'))
+        el.setAttribute('aria-checked', el === chosen ? 'true' : 'false');
+
+    // 2) a selection-ish class carried by exactly one item
+    const freq = new Map();
+    for (const el of items)
+      for (const c of el.classList) freq.set(c, (freq.get(c) || 0) + 1);
+    const selClasses = [...freq.entries()]
+      .filter(
+        ([c, n]) =>
+          n < items.length &&
+          /(select|activ|current|checked|highlight)/i.test(c)
+      )
+      .map(([c]) => c);
+    if (selClasses.length) {
+      for (const el of items) el.classList.remove(...selClasses);
+      chosen.classList.add(...selClasses);
     }
-    if (chosen.hasAttribute('aria-checked'))
-      chosen.setAttribute('aria-checked', 'true');
+
+    // 3) a checkmark child element that lives inside the selected item only
+    const MARK_SEL =
+      '[class*="check" i], [class*="tick" i], [class*="selected" i], [class*="active" i]';
+    for (const el of items) {
+      if (el === chosen) continue;
+      const mark = el.querySelector(MARK_SEL);
+      if (mark && !chosen.querySelector(MARK_SEL)) {
+        chosen.appendChild(mark);
+        break;
+      }
+    }
   }
 
   function injectSpeeds() {
@@ -179,12 +195,21 @@
         item.setAttribute('aria-checked', 'false');
       onActivate(item, () => {
         applyRate(speed);
-        markSelected(group, item);
+        syncSelection(group.parent, classifySpeed, item);
       });
       group.parent.appendChild(item);
     }
 
-    // Keep the chosen speed marked when Crunchyroll rebuilds the menu.
+    // Re-assert our selection whenever Crunchyroll rebuilds the menu, so the
+    // checkmark keeps pointing at the speed the user actually chose.
+    if (desiredRate != null) {
+      const chosen =
+        group.parent.querySelector(`[${FLAG}="speed-${desiredRate}"]`) ||
+        group.items.find((i) => Math.abs(i.value - desiredRate) < 1e-9)?.node;
+      if (chosen) syncSelection(group.parent, classifySpeed, chosen);
+    }
+
+    // Keep the chosen speed applied when Crunchyroll rebuilds the media.
     guardVideoRate();
   }
 
@@ -195,14 +220,42 @@
     return null;
   }
 
-  function setSubtitlesOff(off) {
-    document.documentElement.classList.toggle(SUBS_OFF_CLASS, off);
-    const v = getVideo();
-    if (v && v.textTracks) {
-      for (const track of v.textTracks) {
-        if (off) track.mode = 'disabled';
+  // Crunchyroll renders subtitles into an overlay/canvas layered over the
+  // <video> (its exact class names change), so instead of guessing selectors we
+  // find likely subtitle layers at runtime and hide them directly. This is
+  // re-run on every scan while "None" is active, since the player recreates the
+  // layer on seeks / new segments.
+  function subtitleLayers() {
+    const sel =
+      'canvas, [class*="subtitle" i], [class*="caption" i], [class*="timedtext" i], [class*="libass" i], .vjs-text-track-display';
+    return Array.from(document.querySelectorAll(sel)).filter(
+      (n) =>
+        // never hide the controls: skip anything that is (or sits inside) a
+        // button or an open menu.
+        !n.closest(
+          'button, [role="menu"], [role="menuitem"], [role="menuitemradio"], [role="option"]'
+        )
+    );
+  }
+
+  function applySubtitleState() {
+    if (subsOff) {
+      for (const n of subtitleLayers()) {
+        if (!hiddenNodes.has(n)) hiddenNodes.set(n, n.style.display);
+        n.style.setProperty('display', 'none', 'important');
       }
+    } else if (hiddenNodes.size) {
+      for (const [n, prev] of hiddenNodes) n.style.display = prev || '';
+      hiddenNodes.clear();
     }
+    const v = getVideo();
+    if (subsOff && v && v.textTracks)
+      for (const track of v.textTracks) track.mode = 'disabled';
+  }
+
+  function setSubtitlesOff(off) {
+    subsOff = off;
+    applySubtitleState();
   }
 
   function injectSubtitleNone() {
@@ -222,7 +275,7 @@
       item.setAttribute('aria-checked', 'false');
     onActivate(item, () => {
       setSubtitlesOff(true);
-      markSelected(group, item);
+      syncSelection(group.parent, classifySubtitle, item);
     });
 
     // Picking any real language turns subtitles back on.
@@ -241,9 +294,9 @@
   function scan() {
     scheduled = false;
     try {
-      injectStyle();
       injectSpeeds();
       injectSubtitleNone();
+      if (subsOff) applySubtitleState(); // re-hide layers the player recreated
     } catch (e) {
       /* never let the site break because of us */
     }
