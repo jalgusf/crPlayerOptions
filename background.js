@@ -34,6 +34,8 @@ const EMPTY_ASS = [
 const EMPTY_ASS_URL =
   'data:text/plain;charset=utf-8,' + encodeURIComponent(EMPTY_ASS);
 
+const isObj = (v) => v !== null && typeof v === 'object';
+
 // Rewrite a JSON response body: `transform(json)` may mutate and return the new
 // object (or return undefined to leave the body untouched).
 function filterJson(details, transform) {
@@ -65,13 +67,39 @@ function filterJson(details, transform) {
   };
 }
 
-// Add "None" to the per-episode subtitle list (drives the menu row + track).
+// Add "None" to the per-episode playback response. The web player builds the
+// language menu from `hardSubs` (burned-in stream variants), so the entry that
+// actually creates the menu row is the hardSubs one — pointed at the clean,
+// subtitle-free manifest already in the response (top-level `url`), so selecting
+// it plays the video with no subtitles. We also add it to the soft `subtitles`
+// map (empty track) to cover players that read from there instead.
 function addNoneSubtitle(json) {
-  const subs = json && json.subtitles;
-  if (!subs || typeof subs !== 'object' || NONE_KEY in subs) return;
-  const none = { format: 'ass', language: NONE_KEY, url: EMPTY_ASS_URL };
-  json.subtitles = { [NONE_KEY]: none, ...subs }; // put "None" first
-  return json;
+  if (!json || typeof json !== 'object') return;
+  let changed = false;
+
+  if (isObj(json.hardSubs) && !(NONE_KEY in json.hardSubs) && typeof json.url === 'string') {
+    json.hardSubs = {
+      [NONE_KEY]: { hlang: NONE_KEY, url: json.url, quality: 'adaptive' },
+      ...json.hardSubs,
+    };
+    changed = true;
+  }
+
+  if (isObj(json.subtitles) && !(NONE_KEY in json.subtitles)) {
+    json.subtitles = {
+      [NONE_KEY]: { format: 'ass', language: NONE_KEY, url: EMPTY_ASS_URL },
+      ...json.subtitles,
+    };
+    changed = true;
+  }
+
+  if (changed)
+    console.debug(
+      '[crPlayerOptions] injected None:',
+      'hardSubs=', Object.keys(json.hardSubs || {}),
+      'subtitles=', Object.keys(json.subtitles || {})
+    );
+  return changed ? json : undefined;
 }
 
 // Add the display name for our locale (drives the menu label).
