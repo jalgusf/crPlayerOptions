@@ -23,12 +23,15 @@ directly and re-applies it after ads / segment changes. It runs in a
 re-injected whenever the menu reopens.
 
 **Subtitle "None" — `background.js` (network injection).**
-Crunchyroll builds its subtitle menu from a JSON file it fetches
-(`static.crunchyroll.com/config/i18n/v3/timed_text_languages.json`, a
-`locale -> name` map). Using Firefox's `webRequest.filterResponseData`, the
-background script rewrites that response to prepend a `"None"` entry, so it
-appears as a native menu option. Selecting it points the player at a locale
-with no timed-text track, leaving the video with no subtitles.
+Crunchyroll builds its subtitle menu from the per-episode playback response
+(`www.crunchyroll.com/playback/v3/<id>/web/<browser>/play`), whose `subtitles`
+field maps each locale to a subtitle track. Using Firefox's
+`webRequest.filterResponseData`, the background script injects a `None` entry
+pointing at an **empty** ASS subtitle (an inline `data:` URL with no dialogue),
+so it shows up as a native menu option and selecting it renders nothing. It also
+adds the matching display name to the label file
+(`static.crunchyroll.com/config/i18n/v3/timed_text_languages.json`) so the row
+reads "None".
 
 ## Install (temporary, for testing)
 

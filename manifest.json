@@ -12,7 +12,7 @@
   "permissions": [
     "webRequest",
     "webRequestBlocking",
-    "*://static.crunchyroll.com/*"
+    "*://*.crunchyroll.com/*"
   ],
   "background": {
     "scripts": ["background.js"]
