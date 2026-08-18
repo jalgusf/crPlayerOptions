@@ -23,15 +23,14 @@ directly and re-applies it after ads / segment changes. It runs in a
 re-injected whenever the menu reopens.
 
 **Subtitle "None" — `background.js` (network injection).**
-Crunchyroll builds its subtitle menu from the per-episode playback response
-(`www.crunchyroll.com/playback/v3/<id>/web/<browser>/play`), whose `subtitles`
-field maps each locale to a subtitle track. Using Firefox's
-`webRequest.filterResponseData`, the background script injects a `None` entry
-pointing at an **empty** ASS subtitle (an inline `data:` URL with no dialogue),
-so it shows up as a native menu option and selecting it renders nothing. It also
-adds the matching display name to the label file
-(`static.crunchyroll.com/config/i18n/v3/timed_text_languages.json`) so the row
-reads "None".
+Crunchyroll builds its subtitle language menu from the per-episode playback
+response (`www.crunchyroll.com/playback/v3/<id>/web/<browser>/play`). Using
+Firefox's `webRequest.filterResponseData`, the background script injects a
+`None` entry into that response's `hardSubs` map, pointed at the clean,
+subtitle-free manifest already in the response — so selecting it plays the video
+with no subtitles. (It's also added to the soft `subtitles` map as an empty
+inline ASS track, for players that render from there.) The player labels the row
+from the locale key, so the key is literally `None`.
 
 ## Install (temporary, for testing)
 
@@ -55,6 +54,5 @@ need to sign the add-on through [addons.mozilla.org](https://addons.mozilla.org)
 
 - `EXTRA_SPEEDS` (top of `content.js`) — which speeds to add.
 - `SPEED_RE` / `NORMAL_RE` (top of `content.js`) — how speed options are recognised.
-- `NONE_KEY` / `NONE_LABEL` (top of `background.js`) — the injected subtitle
-  entry's locale key and label.
-- `LANG_URLS` (top of `background.js`) — which response(s) get the `None` entry.
+- `NONE_KEY` (top of `background.js`) — the injected subtitle entry's key, which
+  is also the label shown in the menu.

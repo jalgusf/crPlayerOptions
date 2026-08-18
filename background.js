@@ -1,21 +1,22 @@
 // Subtitle "None" option via network injection.
 // ---------------------------------------------------------------------------
-// Crunchyroll builds its subtitle menu from the per-episode playback response:
+// Crunchyroll builds its subtitle language menu from the per-episode playback
+// response:
 //   https://www.crunchyroll.com/playback/v3/<id>/web/<browser>/play
-// whose `subtitles` field maps locale -> { format, language, url }. We inject a
-// "None" entry pointing at an empty subtitle track (a data: URL with no dialogue
-// lines), so it appears as a native menu option and selecting it renders no
-// subtitles.
+// The player labels each row from the locale key (falling back to the raw key
+// when it has no display name for it), so we use "None" as the key itself and
+// the menu reads "None".
 //
-// The menu *label* for a locale is looked up in a separate file:
-//   https://static.crunchyroll.com/config/i18n/v3/timed_text_languages.json
-// a locale -> name map. We add our locale there too, so the row reads "None".
+// We add the entry to `hardSubs` (the burned-in stream variants the menu is
+// built from), pointing it at the clean, subtitle-free manifest already present
+// in the response (top-level `url`) so selecting it plays the video with no
+// subtitles. We also add it to the soft `subtitles` map (an empty inline ASS
+// track) to cover players that render from there instead.
 //
-// Both responses are rewritten on the fly with Firefox's filterResponseData.
+// The response is rewritten on the fly with Firefox's filterResponseData.
 // ---------------------------------------------------------------------------
 
-const NONE_KEY = 'off'; // locale key for our injected entry
-const NONE_LABEL = 'None';
+const NONE_KEY = 'None'; // used as both the locale key and the menu label
 
 // A minimal, valid ASS file with a style but zero dialogue events: parses fine
 // and draws nothing on screen. Delivered inline so no network request is made.
@@ -67,16 +68,12 @@ function filterJson(details, transform) {
   };
 }
 
-// Add "None" to the per-episode playback response. The web player builds the
-// language menu from `hardSubs` (burned-in stream variants), so the entry that
-// actually creates the menu row is the hardSubs one — pointed at the clean,
-// subtitle-free manifest already in the response (top-level `url`), so selecting
-// it plays the video with no subtitles. We also add it to the soft `subtitles`
-// map (empty track) to cover players that read from there instead.
 function addNoneSubtitle(json) {
-  if (!json || typeof json !== 'object') return;
+  if (!isObj(json)) return;
   let changed = false;
 
+  // The entry that actually creates the menu row: point it at the clean,
+  // subtitle-free manifest so selecting "None" plays the video with no subs.
   if (isObj(json.hardSubs) && !(NONE_KEY in json.hardSubs) && typeof json.url === 'string') {
     json.hardSubs = {
       [NONE_KEY]: { hlang: NONE_KEY, url: json.url, quality: 'adaptive' },
@@ -85,6 +82,7 @@ function addNoneSubtitle(json) {
     changed = true;
   }
 
+  // Fallback for players that render soft subtitles from `subtitles`.
   if (isObj(json.subtitles) && !(NONE_KEY in json.subtitles)) {
     json.subtitles = {
       [NONE_KEY]: { format: 'ass', language: NONE_KEY, url: EMPTY_ASS_URL },
@@ -93,29 +91,11 @@ function addNoneSubtitle(json) {
     changed = true;
   }
 
-  if (changed)
-    console.debug(
-      '[crPlayerOptions] injected None:',
-      'hardSubs=', Object.keys(json.hardSubs || {}),
-      'subtitles=', Object.keys(json.subtitles || {})
-    );
   return changed ? json : undefined;
-}
-
-// Add the display name for our locale (drives the menu label).
-function addNoneLabel(json) {
-  if (!json || typeof json !== 'object' || NONE_KEY in json) return;
-  return { [NONE_KEY]: NONE_LABEL, ...json };
 }
 
 browser.webRequest.onBeforeRequest.addListener(
   (d) => filterJson(d, addNoneSubtitle),
   { urls: ['*://www.crunchyroll.com/playback/v3/*/play*'] },
-  ['blocking']
-);
-
-browser.webRequest.onBeforeRequest.addListener(
-  (d) => filterJson(d, addNoneLabel),
-  { urls: ['*://static.crunchyroll.com/config/i18n/*/timed_text_languages.json*'] },
   ['blocking']
 );
