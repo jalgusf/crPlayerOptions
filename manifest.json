@@ -16,13 +16,5 @@
   ],
   "background": {
     "scripts": ["background.js"]
-  },
-  "content_scripts": [
-    {
-      "matches": ["*://*.crunchyroll.com/*"],
-      "all_frames": true,
-      "run_at": "document_idle",
-      "js": ["content.js"]
-    }
-  ]
+  }
 }
