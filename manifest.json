@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Crunchyroll Player Options",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Adds 1.5x and 2x playback speeds and a \"None\" subtitle option to the Crunchyroll video player.",
   "browser_specific_settings": {
     "gecko": {
@@ -12,12 +12,21 @@
       }
     }
   },
+  "browser_action": {"default_title": "Crunchyroll Speed", "default_popup": "popup.html"},
   "permissions": [
+    "storage",
     "webRequest",
     "webRequestBlocking",
     "*://*.crunchyroll.com/*"
   ],
   "background": {
     "scripts": ["background.js"]
-  }
+  },
+  "content_scripts": [{
+    "matches": ["https://crunchyroll.com/*", "https://*.crunchyroll.com/*"],
+    "js": ["content.js"],
+    "all_frames": true,
+    "match_about_blank": true,
+    "run_at": "document_idle"
+  }]
 }
