@@ -1,0 +1,8 @@
+body { width: 260px; margin: 0; padding: 18px; font: 14px system-ui, sans-serif; background: #16191e; color: #fafafa; }
+h1 { font-size: 18px; margin: 0 0 16px; }
+div { display: flex; gap: 8px; }
+button { flex: 1; padding: 12px 8px; border: 1px solid #69727c; border-radius: 8px; background: #292f37; color: white; cursor: pointer; font: bold 17px system-ui; }
+button[aria-pressed="true"] { background: #ff9c52; color: #16191e; border-color: #ff9c52; }
+button:focus-visible { outline: 2px solid white; outline-offset: 3px; }
+p { margin-bottom: 10px; }
+small { color: #bac1ca; line-height: 1.5; }
